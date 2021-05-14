@@ -24,6 +24,22 @@ use generic_array::typenum::{U256, U1022};
 
 const SOLO_STATE: &'static str = "solo-state.bin";
 
+#[macro_use]
+extern crate delog;
+generate_macros!();
+
+#[derive(Debug)]
+pub struct Flusher {}
+
+impl delog::Flusher for Flusher {
+    fn flush(&self, logs: &str) {
+        println!("{}", logs);
+    }
+}
+
+delog!(Delogger, 16*1024, 3*1024, Flusher);
+static FLUSHER: Flusher = Flusher {};
+
 #[allow(non_camel_case_types)]
 pub mod littlefs_params {
     use super::*;
@@ -195,6 +211,9 @@ platform!(Board,
 
 fn main () {
 
+    Delogger::init_default(delog::LevelFilter::Debug, &FLUSHER).ok();
+    info_now!("starting to log");
+
     let filesystem = FileFlash::new();
 
     static mut INTERNAL_STORAGE: Option<FileFlash> = None;
@@ -246,7 +265,50 @@ fn main () {
     let pc_interface: UserInterface = Default::default();
 
     let board = Board::new(rng, store, pc_interface);
-    let mut _trussed = trussed::service::Service::new(board);
+    let mut trussed_service = trussed::service::Service::new(board);
 
     println!("hello trussed");
+
+    use usb_device::prelude::*;
+    use usb_device::class_prelude::*;
+    use usbip_device::UsbIpBus;
+
+    static mut USB_BUS: Option<UsbBusAllocator<UsbIpBus>> = None;
+    unsafe { USB_BUS.replace(UsbBusAllocator::new(UsbIpBus::new())) };
+    let usb_bus = unsafe { USB_BUS.as_ref().unwrap() };
+
+    use trussed::Interchange;
+    let (contact_requester, _contact_responder) = apdu_dispatch::interchanges::Contact::claim()
+        .expect("could not setup ccid ApduInterchange");
+
+    let (hid_requester, hid_responder) = ctaphid_dispatch::types::HidInterchange::claim()
+        .expect("could not setup HidInterchange");
+
+    let mut ctaphid = usbd_ctaphid::CtapHid::new(&usb_bus, hid_requester, 100);
+    // let mut ccid = usbd_ccid::Ccid::new(&usb_bus, contact_requester);
+
+    let mut usb_device = UsbDeviceBuilder::new(&usb_bus, UsbVidPid(0x1209, 0xcc1d))
+        .manufacturer("SoloKeys")
+        .product("Solo 2 PC")
+        .serial_number("TEST")
+        // .max_packet_size_0(64)
+        // .composite_with_iads()
+        .build();
+
+    let (piv_trussed_requester, _piv_trussed_responder) = trussed::pipe::TrussedInterchange::claim()
+        .expect("could not setup PIV TrussedInterchange");
+
+    let piv_trussed = trussed::ClientImplementation::new(
+        piv_trussed_requester,
+        &mut trussed_service,
+    );
+    let _piv = piv_authenticator::Authenticator::new(piv_trussed);
+
+    loop {
+        // usb_device.poll(&mut [&mut ccid]);
+        usb_device.poll(&mut [&mut ctaphid]);
+        Delogger::flush();
+    }
+
+
 }

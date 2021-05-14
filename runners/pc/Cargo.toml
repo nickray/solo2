@@ -13,6 +13,9 @@ embedded-hal = { version = "0.2", features = ["unproven"] }
 generic-array = "0.14.3"
 interchange = "0.2.0"
 trussed = { git = "https://github.com/trussed-dev/trussed", branch = "main", features = ["clients-3"] }
+usb-device = "0.2.8"
+# usbip-device = "0.1.4"
+usbip-device = { path = "../../../usbip-device" }
 
 # components
 c-stubs = { path = "../../components/c-stubs" }

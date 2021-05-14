@@ -468,8 +468,8 @@ pub fn init_board(
                 .product(product_string)
                 .serial_number(serial_number)
                 .device_release(device_release)
-                .max_packet_size_0(64)
-                .composite_with_iads()
+                // .max_packet_size_0(64)
+                // .composite_with_iads()
                 .build();
 
             Some(types::UsbClasses::new(usbd, ccid, ctaphid, /*keyboard,*/ serial))
